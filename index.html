@@ -1049,21 +1049,31 @@ const Hangman = new class extends GameEngine {
                 ptsDetail = ` <span style="color:var(--success);font-size:0.85em">(pistas sin penalizar ✓)</span>`;
 
             const progress = this.maxRounds>0 ? `Ronda ${this.roundNum}/${this.maxRounds}` : `Ronda ${this.roundNum}`;
+
+            // El turno SIEMPRE avanza al terminar cada palabra (acierte o falle).
+            // Así ningún jugador puede tomarse tiempo ilimitado esperando la respuesta.
+            // El desempate en caso de igualdad de puntos se resuelve por menor tiempo acumulado.
+            this.next();
+            const nextName = this.players[this.turn].name;
+            const nextLabel = this.players.length > 1
+                ? `➡️ Turno de ${nextName}`
+                : '➡️ Siguiente Palabra';
+            const isLastRound = this.maxRounds > 0 && this.roundNum >= this.maxRounds;
+
             content = `
                 ${diffBadge}
                 <div class="round-result ${done?'win':'fail'}">
                     ${done ? `✅ ¡Correcto! +${pts} punto${pts!==1?'s':''}${ptsDetail}` : `❌ Era: <b>${this.curr.texto}</b>`}
                 </div>
                 <div style="text-align:center;font-size:0.8em;color:var(--text-sub);margin-bottom:8px">${progress}</div>
+                ${this.players.length > 1 ? `<div style="text-align:center;margin-bottom:8px;font-size:0.9em;font-weight:700;color:var(--primary)">🎯 Ahora juega: <b>${nextName}</b></div>` : ''}
                 ${UI.buildEduCard(this.wObj)}
                 <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
                     <button class="btn btn-primary" style="flex:1;min-width:140px" onclick="Hangman._nextRound()">
-                        ${(this.maxRounds>0&&this.roundNum>=this.maxRounds)?'📊 Ver Resultados':'➡️ Siguiente Palabra'}
+                        ${isLastRound ? '📊 Ver Resultados' : nextLabel}
                     </button>
                     <button class="btn btn-secondary" style="flex:1;min-width:140px" onclick="Hangman.showFinalRanking('Resultados')">📊 Ver Ranking</button>
                 </div>`;
-
-            if(this.players.length>1) this.next();
 
         } else {
             this._syncSurrenderFab();
