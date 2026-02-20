@@ -596,10 +596,12 @@ class GameEngine {
         // Prevención de bloqueos: clic automático en "1 jugador" para garantizar
         // que this.players siempre esté inicializado aunque el usuario no toque nada.
         // El delay de 60ms asegura que el DOM y window.Game ya existan.
-        setTimeout(() => {
+        const _autoSelect = () => {
             const btn1 = document.getElementById('btn-p-1');
             if(btn1 && window.Game) Game.setP(1, btn1);
-        }, 60);
+        };
+        requestAnimationFrame(() => requestAnimationFrame(_autoSelect));
+        setTimeout(_autoSelect, 150);
     }
 
     _rulesHint() { return ''; }
