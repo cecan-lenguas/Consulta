@@ -22,7 +22,11 @@
         }
         * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
         body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg-body); color:var(--text-main); margin:0; padding-bottom:100px; font-size:var(--fs); line-height:1.6; transition:font-size 0.2s; }
-
+        .ws-cell {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
         /* HEADER */
         header { padding:14px 16px; background:var(--bg-card); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:1000; }
         .top-bar { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
@@ -162,9 +166,35 @@
         .hint-box.active { border-color:var(--primary); border-style:solid; color:var(--text-main); }
 
         /* ===== SOPA ===== */
-        .ws-wrapper { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-        .ws-grid { display:grid; gap:3px; margin:10px auto; width:min(360px,92vw); user-select:none; touch-action:none; }
-        .ws-cell { aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border-radius:6px; font-weight:800; font-size:clamp(0.75rem,2.4vw,0.95rem); background:var(--bg-body); border:1px solid var(--border); cursor:pointer; transition:background 0.08s; }
+        .ws-wrapper {
+            overflow-x: auto;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+        .ws-grid {
+            display: grid;
+            gap: 2px;
+            margin: 10px auto;
+            touch-action: none;
+            /* width se calcula dinámicamente en JS */
+        }
+        .ws-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 5px;
+            font-weight: 800;
+            background: var(--bg-body);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: background 0.08s;
+            user-select: none;
+            -webkit-user-select: none;
+            /* tamaño se asigna inline en JS */
+        }
         .ws-cell.selected { background:var(--primary); color:#fff; border-color:var(--primary); transform:scale(1.05); }
         .ws-cell.found-0  { background:#2563eb; color:#fff; border-color:#2563eb; }
         .ws-cell.found-1  { background:#e11d48; color:#fff; border-color:#e11d48; }
@@ -293,13 +323,13 @@ const Core = {
         if(!url){ url=prompt("Ingresa la URL del Script:"); if(url) localStorage.setItem('glosario_url',url); else return; }
         
         try {
-            // Aseguramos pedir el paquete completo del glosario
             const fullUrl = url.includes('?') ? url : url + '?action=glosario';
+            // Endpoint consistente con Google Apps Script: action=glosario
             const r = await fetch(fullUrl);
             const d = await r.json();
             
             if(d.status !== 200) throw new Error(d.error || 'Error en servidor');
-            this.load(d.data); // Pasamos los datos desempacados
+            this.load(d.data);
         } catch(e) {
             alert("Error de conexión: " + e.message + "\n\n(Verifica que la API en Google tenga permisos de 'Cualquier persona')");
             localStorage.removeItem('glosario_url');
@@ -326,16 +356,13 @@ const Core = {
         document.getElementById('app-sub').innerText   = apiData.config?.subtitulo || 'Comunidad';
 
         const map={};
-        // Mapeamos las palabras estructurales primero
         (apiData.palabras||[]).forEach(p => {
            map[p.id_palabra] = { id:p.id_palabra, base: '...', def:'', id_cat: p.id_categoria, img: p.imagen_referencia, vars:[] };
         });
 
-        // Insertamos las traducciones reales
         (apiData.traducciones||[]).forEach(t=>{
             if(!map[t.id_palabra]) map[t.id_palabra]={ id:t.id_palabra, base:t.texto, def:t.nota_variante, id_cat: t.id_categoria, img:t.imagen, vars:[] };
 
-            // Si es el idioma base (Ej. Español), lo ponemos como título principal
             if(String(t.id_idioma)===String(this.mainLangId)){
                 map[t.id_palabra].base = t.texto;
             }
@@ -498,7 +525,7 @@ class GameEngine {
         this.players  = [];
         this.turn     = 0;
         this.timerInt = null;
-        this.wordsLog = []; // [{player, word, ok, time}]
+        this.wordsLog = [];
     }
 
     stop() { clearInterval(this.timerInt); this.timerInt=null; }
@@ -512,11 +539,14 @@ class GameEngine {
 
     /* Inicializa jugadores desde el formulario */
     initP() {
-        const count  = parseInt(document.getElementById('p-inputs')?.dataset.count||1);
+        const pInputs = document.getElementById('p-inputs');
+        // Por defecto 1 jugador si el elemento no existe o data-count no está seteado
+        const count  = parseInt(pInputs?.dataset.count || '1');
         const colors = ['var(--primary)','#e11d48','#16a34a','#d97706'];
         this.players = [];
         for(let i=1;i<=count;i++){
-            const name = count>1 ? (document.getElementById(`p${i}`)?.value||`J${i}`) : 'Tú';
+            const inputEl = document.getElementById(`p${i}`);
+            const name = count > 1 ? (inputEl?.value?.trim() || `J${i}`) : 'Tú';
             this.players.push({ name, score:0, time:0, color:colors[i-1], surrendered:false });
         }
         this.turn   = 0;
@@ -528,43 +558,57 @@ class GameEngine {
         UI.closeFabMenu();
         window.activeGame = this;
         document.getElementById('surrender-fab').classList.remove('visible');
+        
         document.getElementById('modal-body').innerHTML = `
             <div style="text-align:center">
                 <h2 style="color:var(--primary);margin-top:0">${title}</h2>
                 ${content}
                 <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px">
                     <label style="font-weight:700;display:block;margin-bottom:8px">👥 Jugadores:</label>
-                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-                        ${[1,2,3,4].map(n=>`<button class="btn btn-secondary" style="min-width:52px" onclick="Game.setP(${n},this)">${n}</button>`).join('')}
+                    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap" id="player-selector-btns">
+                        ${[1,2,3,4].map(n=>`<button class="btn btn-secondary" id="btn-p-${n}" style="min-width:52px" onclick="Game.setP(${n},this)">${n}</button>`).join('')}
                     </div>
                     <div id="p-inputs" data-count="1" style="display:none;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
-                        ${[1,2,3,4].map(n=>`<input id="p${n}" class="input-box" placeholder="Jugador ${n}" value="J${n}">`).join('')}
+                        ${[1,2,3,4].map(n=>`<input id="p${n}" class="input-box" placeholder="Jugador ${n}" value="${n===1?'Tú':'J'+n}">`).join('')}
                     </div>
                     <p style="font-size:0.8em;color:var(--text-sub);margin-top:8px;margin-bottom:0">
                         ${this._rulesHint()}
                     </p>
                 </div>
             </div>`;
-        document.getElementById('modal').style.display='flex';
+
         window.Game = {
             setP:(n,btn)=>{
-                document.querySelectorAll('#modal-body .btn-secondary').forEach(b=>b.style.borderColor='');
+                document.querySelectorAll('#player-selector-btns .btn').forEach(b=>{
+                    b.style.borderColor='';
+                    b.style.borderWidth='';
+                });
                 btn.style.borderColor='var(--primary)';
+                btn.style.borderWidth='3px';
                 const div=document.getElementById('p-inputs');
-                div.style.display=n>1?'grid':'none'; div.dataset.count=n;
+                div.style.display=n>1?'grid':'none'; 
+                div.dataset.count=n;
             }
         };
+
+        document.getElementById('modal').style.display='flex';
+
+        // Prevención de bloqueos: clic automático en "1 jugador" para garantizar
+        // que this.players siempre esté inicializado aunque el usuario no toque nada.
+        // El delay de 60ms asegura que el DOM y window.Game ya existan.
+        setTimeout(() => {
+            const btn1 = document.getElementById('btn-p-1');
+            if(btn1 && window.Game) Game.setP(1, btn1);
+        }, 60);
     }
 
-    _rulesHint() { return ''; } // Sobreescribir en cada juego
+    _rulesHint() { return ''; }
 
-    /* Timer de ajedrez: corre solo para el jugador en turno */
     startTimer() {
         clearInterval(this.timerInt);
         this.timerInt = setInterval(()=>{
             if(!this.players[this.turn]||this.players[this.turn].surrendered) return;
             this.players[this.turn].time++;
-            // Actualizar solo el pill activo sin re-render completo
             const el = document.querySelector(`.player-pill[data-idx="${this.turn}"] .p-time`);
             if(el) el.textContent = this.fmt(this.players[this.turn].time);
         },1000);
@@ -572,7 +616,6 @@ class GameEngine {
 
     pauseTimer() { clearInterval(this.timerInt); this.timerInt=null; }
 
-    /* Avanza al siguiente jugador activo */
     next() {
         let next = (this.turn+1) % this.players.length;
         let tries = 0;
@@ -584,7 +627,6 @@ class GameEngine {
         this._syncSurrenderFab();
     }
 
-    /* Renderiza marcador con timers */
     renderHeader() {
         this._syncSurrenderFab();
         const pills = this.players.map((p,i)=>`
@@ -600,7 +642,6 @@ class GameEngine {
         return `<div class="score-board">${pills}</div>`;
     }
 
-    /* Sincroniza el FAB de rendirse */
     _syncSurrenderFab() {
         const fab=document.getElementById('surrender-fab'), lbl=document.getElementById('surrender-label');
         if(!fab||!this.players.length) return;
@@ -611,7 +652,6 @@ class GameEngine {
         if(lbl) lbl.textContent = isSingle ? 'Ver Solución' : `Rendirse (${p.name})`;
     }
 
-    /* Lógica de rendirse */
     surrender() {
         const p=this.players[this.turn];
         if(!p||p.surrendered) return;
@@ -630,16 +670,14 @@ class GameEngine {
         } else if(active.length===1){
             this.showFinalRanking(`🏆 ${active[0].name} Gana por default`);
         } else {
-            // Importante: pasar al siguiente jugador activo
             this.next();
             this._syncSurrenderFab();
-            this.afterSurrender(); // hook para re-render en cada juego
+            this.afterSurrender();
         }
     }
 
-    afterSurrender() {} // Hook para que cada juego actualice su UI
+    afterSurrender() {}
 
-    /* Ranking final con log de palabras */
     showFinalRanking(title='🏆 Juego Terminado') {
         this.stop();
         document.getElementById('surrender-fab').classList.remove('visible');
@@ -657,7 +695,6 @@ class GameEngine {
                 </div>
             </div>`).join('');
 
-        // Log de palabras por jugador
         let wordLogs='';
         if(this.wordsLog.length>0){
             sorted.forEach(p=>{
@@ -672,7 +709,6 @@ class GameEngine {
             });
         }
 
-        // Fichas educativas de palabras erróneas
         const failedWords=[...new Set(this.wordsLog.filter(w=>!w.ok&&!w.skipped).map(w=>w.wordId))];
         const eduCards=failedWords.slice(0,3).map(id=>{
             const obj=Core.getWord(id); return obj?UI.buildEduCard(obj):'';
@@ -697,11 +733,6 @@ class GameEngine {
 
 /* =============================================
    MEMORAMA
-   Reglas:
-   - Encontrar parejas imagen↔texto (u otras combos)
-   - 1P: contar aciertos y tiempo total
-   - MP: turno pasa al errar; quien encuentra queda en turno
-   - Al acabar o rendirse: ficha educativa de cada par
    ============================================= */
 const Memory = new class extends GameEngine {
     _rulesHint() { return '1 jugador: intenta acabar en el menor tiempo. Varios: al fallar pasa el turno, al acertar sigues tú.'; }
@@ -712,13 +743,13 @@ const Memory = new class extends GameEngine {
             <div style="background:var(--bg-body);padding:12px;border-radius:12px;text-align:left;margin-bottom:4px">
                 <label style="font-size:0.82em;font-weight:700;margin-bottom:4px;display:block">Cara A:</label>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-                    <select id="tA" class="modern-select"><option value="img">🖼 Imagen</option><option value="txt">📝 Texto</option></select>
-                    <select id="lA" class="modern-select">${o}</select>
+                    <select id="mem-tA" class="modern-select"><option value="img">🖼 Imagen</option><option value="txt">📝 Texto</option></select>
+                    <select id="mem-lA" class="modern-select">${o}</select>
                 </div>
                 <label style="font-size:0.82em;font-weight:700;margin-bottom:4px;display:block">Cara B:</label>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-                    <select id="tB" class="modern-select"><option value="txt">📝 Texto</option><option value="img">🖼 Imagen</option><option value="audio">🔊 Audio</option></select>
-                    <select id="lB" class="modern-select">${o}</select>
+                    <select id="mem-tB" class="modern-select"><option value="txt">📝 Texto</option><option value="img">🖼 Imagen</option><option value="audio">🔊 Audio</option></select>
+                    <select id="mem-lB" class="modern-select">${o}</select>
                 </div>
                 <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
                     <label style="font-size:0.82em;font-weight:700">Pares:</label>
@@ -732,33 +763,52 @@ const Memory = new class extends GameEngine {
 
     start() {
         this.initP();
-        const c={ tA:document.getElementById('tA').value, lA:document.getElementById('lA').value, tB:document.getElementById('tB').value, lB:document.getElementById('lB').value };
-        const pairsN = parseInt(document.getElementById('mem-pairs').value||6);
-        let pool=[];
-        Core.processed.forEach(i=>{
-            const getV=(t,l)=>{
-                if(t==='img'){
-                    const ph=makePlaceholder(i.base?.charAt(0)||'?');
-                    return { h:`<img src="${i.img||ph}" onerror="this.src='${ph}'" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;border-radius:10px">`, v:1, label:i.base };
-                }
-                const v=i.vars.find(x=>l==='any'||String(x.id_idioma)===String(l));
-                if(!v) return{v:0};
-                if(t==='txt') return{ h:`<span class="mem-match-label">${this.getLangName(v.id_idioma)}</span><span style="font-size:clamp(0.85rem,3vw,1.1rem);font-weight:800;word-break:break-word">${v.texto}</span>`, a:v.audio, v:1, label:v.texto };
-                if(t==='audio') return{ h:`<div style="font-size:2.5rem">🔊</div><span style="font-size:0.72em;color:var(--text-sub)">Escucha</span>`, a:v.audio, v:v.audio?1:0, label:v.texto };
-                return{v:0};
-            };
-            const rA=getV(c.tA,c.lA), rB=getV(c.tB,c.lB);
-            if(rA.v&&rB.v) pool.push({ id:i.id, a:rA, b:rB, word:i.base });
+        const tA  = document.getElementById('mem-tA')?.value || 'img';
+        const lA  = document.getElementById('mem-lA')?.value || 'any';
+        const tB  = document.getElementById('mem-tB')?.value || 'txt';
+        const lB  = document.getElementById('mem-lB')?.value || 'any';
+        const np  = parseInt(document.getElementById('mem-pairs')?.value || '8');
+
+        // Filtrar palabras con información suficiente
+        let pool = Core.processed.filter(i => {
+            const hasImg  = !!i.img;
+            const varA = lA==='any' ? i.vars[0] : i.vars.find(v=>String(v.id_idioma)===String(lA));
+            const varB = lB==='any' ? i.vars[0] : i.vars.find(v=>String(v.id_idioma)===String(lB));
+            if(!varA && !varB) return false;
+            if(tA==='img' && !hasImg) return false;
+            if(tB==='img' && !hasImg) return false;
+            if(tA==='audio' && !varA?.audio) return false;
+            if(tB==='audio' && !varB?.audio) return false;
+            return true;
+        }).sort(()=>Math.random()-0.5).slice(0, np);
+
+        if(pool.length < 3) return alert('Pocas palabras disponibles con esas opciones. Prueba otra configuración.');
+
+        this.totalPairs = pool.length;
+        this.matched    = 0;
+        this.flip       = [];
+        this.lock       = 0;
+
+        // Crear cartas: cada palabra genera 2 cartas (A y B)
+        const makeHtml = (type, lang, wordObj) => {
+            const v = lang==='any' ? wordObj.vars[0] : wordObj.vars.find(x=>String(x.id_idioma)===String(lang));
+            if(type==='img') return wordObj.img ? `<img src="${wordObj.img}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;position:absolute;inset:0" alt="">` : `<span style="font-size:2em">${wordObj.base.charAt(0)}</span>`;
+            if(type==='audio') return v?.audio ? `<span style="font-size:2em">🔊</span><span style="font-size:0.75em;font-weight:900">${v?.texto||'?'}</span>` : `<span>${v?.texto||'?'}</span>`;
+            return `<span style="font-weight:900;text-align:center;padding:4px;word-break:break-word;font-size:clamp(0.8em,3vw,1.1em)">${v?.texto||wordObj.base}</span>`;
+        };
+
+        this.cards = [];
+        pool.forEach(wordObj => {
+            const hA = makeHtml(tA, lA, wordObj);
+            const hB = makeHtml(tB, lB, wordObj);
+            const aId = (tA==='audio' ? (lA==='any'?wordObj.vars[0]:wordObj.vars.find(v=>String(v.id_idioma)===String(lA)))?.audio : null);
+            const bId = (tB==='audio' ? (lB==='any'?wordObj.vars[0]:wordObj.vars.find(v=>String(v.id_idioma)===String(lB)))?.audio : null);
+            this.cards.push({ id:wordObj.id, h:hA, a:aId, word:wordObj.base, f:false });
+            this.cards.push({ id:wordObj.id, h:hB, a:bId, word:wordObj.base, f:false });
         });
-        if(pool.length<pairsN){ alert(`Solo hay ${pool.length} pares disponibles. Ajusta los filtros.`); return; }
-        this.totalPairs = pairsN;
-        this.cards=[];
-        pool.sort(()=>Math.random()-0.5).slice(0,pairsN).forEach(x=>{
-            this.cards.push({ id:x.id, h:x.a.h, a:x.a.a, f:0, word:x.word, side:'A' });
-            this.cards.push({ id:x.id, h:x.b.h, a:x.b.a, f:0, word:x.word, side:'B' });
-        });
+        // Mezclar cartas
         this.cards.sort(()=>Math.random()-0.5);
-        this.flip=[]; this.lock=0; this.matched=0;
+
         this.startTimer();
         this.render();
     }
@@ -770,7 +820,7 @@ const Memory = new class extends GameEngine {
                  onclick="Memory.clk(${i})" role="button" aria-label="Carta ${i+1}" tabindex="0"
                  onkeydown="if(event.key==='Enter')Memory.clk(${i})">
                 <div class="mem-face mem-front">?</div>
-                <div class="mem-face mem-back">${c.h}</div>
+                <div class="mem-face mem-back" style="display:flex">${c.h}</div>
             </div>`).join('');
         document.getElementById('modal-body').innerHTML=`
             ${this.renderHeader()}
@@ -799,11 +849,9 @@ const Memory = new class extends GameEngine {
             this.players[this.turn].score++;
             this.matched++;
             this.logWord(this.cards[a].word, this.cards[a].id, true);
-            // Acierto: el jugador sigue en turno
         } else {
             SoundFX.error();
             this.logWord(this.cards[a].word, this.cards[a].id, false);
-            // Error: pasa al siguiente
             this.next();
         }
         this.flip=[]; this.lock=0;
@@ -815,26 +863,15 @@ const Memory = new class extends GameEngine {
         this.render();
     }
 
-    revealAll() {
-        this.showFinalRanking('🧠 Memorama Terminado');
-    }
-
+    revealAll() { this.showFinalRanking('🧠 Memorama Terminado'); }
     afterSurrender() { this.render(); }
 };
 
 /* =============================================
    AHORCADO
-   Modos de dificultad:
-   ┌──────────┬────────────────┬──────────────────────────────────────────┐
-   │ Fácil    │ Pistas libres  │ Siempre 3 pts sin importar pistas usadas │
-   │ Intermedio│ Pistas penalizan│ 3→2→1→1 pts según pistas usadas         │
-   │ Difícil  │ Sin pistas     │ 3 pts o 0 – no hay botón de pistas       │
-   └──────────┴────────────────┴──────────────────────────────────────────┘
-   MP: al completar/fallar una ronda pasa el turno.
    ============================================= */
 const Hangman = new class extends GameEngine {
 
-    // Configuración por dificultad
     _diffCfg() {
         const cfgs = {
             easy:   { label:'🟢 Fácil',      hints:true,  penalty:false, maxHints:3, pts:[3,3,3,3] },
@@ -871,6 +908,7 @@ const Hangman = new class extends GameEngine {
 
                 <label style="font-size:0.82em;font-weight:700;display:block;margin-top:8px;margin-bottom:6px">Rondas:</label>
                 <select id="hrounds" class="modern-select">
+                    <option value="3">3 palabras</option>
                     <option value="5">5 palabras</option>
                     <option value="10">10 palabras</option>
                     <option value="15">15 palabras</option>
@@ -880,7 +918,6 @@ const Hangman = new class extends GameEngine {
             </div>
             <button class="btn btn-primary" style="width:100%;margin-top:10px" onclick="Hangman.start()">🚀 Jugar</button>`);
 
-        // Preseleccionar intermedio
         this.diff = 'medium';
     }
 
@@ -895,7 +932,7 @@ const Hangman = new class extends GameEngine {
         this.lid       = document.getElementById('hl').value;
         this.maxRounds = parseInt(document.getElementById('hrounds').value);
         this.roundNum  = 0;
-        if(!this.diff) this.diff = 'medium'; // fallback
+        if(!this.diff) this.diff = 'medium';
         this.startTimer();
         this.round();
     }
@@ -914,18 +951,14 @@ const Hangman = new class extends GameEngine {
         this.render();
     }
 
-    /* Caja de pistas — solo visible en fácil e intermedio */
     _renderHintBox() {
         if(this.hints===0) return '';
-        const cfg = this._diffCfg();
         const cat = Core.getCatDisplay(this.wObj?.id_cat||'');
         let content = '';
 
-        // Pista 1: categoría
         if(this.hints>=1)
             content += `<div style="margin-bottom:4px">📁 Categoría: <b style="color:var(--primary)">${cat}</b></div>`;
 
-        // Pista 2: imagen (desenfocada la primera vez, nítida la segunda)
         if(this.hints>=2){
             const img = this.wObj?.img;
             if(img)
@@ -936,14 +969,12 @@ const Hangman = new class extends GameEngine {
                 content += `<div style="font-size:0.8em;font-style:italic;color:var(--text-sub)">(Sin imagen disponible)</div>`;
         }
 
-        // Pista 3: primera letra revelada
         if(this.hints>=3)
             content += `<div style="margin-top:6px">🔤 Primera letra: <b style="color:var(--primary);font-size:1.4em">${this.w[0]}</b></div>`;
 
         return `<div class="hint-box active">${content}</div>`;
     }
 
-    /* Botón de pista con info de penalización según dificultad */
     _renderHintBtn() {
         const cfg = this._diffCfg();
         if(!cfg.hints || this.hints>=cfg.maxHints) return '';
@@ -989,7 +1020,6 @@ const Hangman = new class extends GameEngine {
             return `<button class="key-btn ${cls}" onclick="Hangman.try('${l}')" ${guessed?'disabled':''}>${l}</button>`;
         }).join('');
 
-        // Badge de dificultad
         const diffColors = { easy:'var(--success)', medium:'var(--warn)', hard:'var(--error)' };
         const diffBadge = `<span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:0.75em;font-weight:800;
             background:${diffColors[this.diff]||'var(--primary)'};color:#fff;margin-bottom:6px">${cfg.label}</span>`;
@@ -1000,7 +1030,6 @@ const Hangman = new class extends GameEngine {
             this.pauseTimer();
             document.getElementById('surrender-fab').classList.remove('visible');
 
-            // Calcular puntos según dificultad y pistas usadas
             const pts = done ? (cfg.pts[this.hints] ?? cfg.pts[cfg.pts.length-1]) : 0;
 
             if(done){
@@ -1013,7 +1042,6 @@ const Hangman = new class extends GameEngine {
                 this.logWord(this.curr.texto, this.curr.id_palabra, false);
             }
 
-            // Desglose de puntos en mensaje de acierto
             let ptsDetail = '';
             if(done && cfg.penalty && this.hints>0)
                 ptsDetail = ` <span style="color:var(--text-sub);font-size:0.85em">(usaste ${this.hints} pista${this.hints>1?'s':''})</span>`;
@@ -1038,11 +1066,9 @@ const Hangman = new class extends GameEngine {
             if(this.players.length>1) this.next();
 
         } else {
-            // Ronda en curso
             this._syncSurrenderFab();
             const progress = this.maxRounds>0
                 ? `<span style="color:var(--text-sub)">Ronda ${this.roundNum}/${this.maxRounds}</span>` : '';
-            // Mostrar puntos que se ganarán si se acierta ahora
             const ptsNow = cfg.pts[this.hints] ?? cfg.pts[cfg.pts.length-1];
             const ptsPill = `<span style="font-size:0.78em;font-weight:700;color:var(--success)">⭐ Acertar = ${ptsNow} pt${ptsNow!==1?'s':''}</span>`;
 
@@ -1096,24 +1122,18 @@ const Hangman = new class extends GameEngine {
 
 /* =============================================
    SOPA DE LETRAS
-   Reglas:
-   - Encontrar palabras en la cuadrícula
-   - 1P: puntos por cada palabra encontrada, tiempo total
-   - MP: turno rota, quien encuentra anota punto y sigue en turno
-   - Color por jugador en las celdas encontradas
-   - Al rendirse o acabar: ranking + fichas de palabras no encontradas
    ============================================= */
 const WordSearch = new class extends GameEngine {
-    _rulesHint() { return 'Arrastra sobre las letras para encontrar palabras. Al encontrar sigues tú; si no hay más intento pasa el turno.'; }
+    _rulesHint() { return 'Arrastra sobre las letras para encontrar palabras. Al encontrar sigues tú; al fallar pasa el turno.'; }
 
     setup() {
         const opts=`<option value="any">Mezclado</option>`+Core.langs.map(l=>`<option value="${l.id_idioma}">${this.getLangName(l.id_idioma)}</option>`).join('');
         this.setupUI('🧩 Sopa de Letras', `
             <div style="background:var(--bg-body);padding:12px;border-radius:12px;margin-bottom:4px;text-align:left">
                 <label style="font-size:0.82em;font-weight:700;display:block;margin-bottom:6px">Idioma:</label>
-                <select id="wl" class="modern-select">${opts}</select>
+                <select id="ws-lang" class="modern-select">${opts}</select>
                 <label style="font-size:0.82em;font-weight:700;display:block;margin-top:8px;margin-bottom:6px">Tamaño:</label>
-                <select id="wsize" class="modern-select">
+                <select id="ws-size" class="modern-select">
                     <option value="8">Pequeño (8×8, 6 palabras)</option>
                     <option value="10" selected>Normal (10×10, 8 palabras)</option>
                     <option value="12">Grande (12×12, 10 palabras)</option>
@@ -1122,206 +1142,272 @@ const WordSearch = new class extends GameEngine {
             <button class="btn btn-primary" style="width:100%;margin-top:4px" onclick="WordSearch.start()">🚀 ¡Jugar!</button>`);
     }
 
+    /* Calcula el tamaño óptimo de celda según el espacio disponible en el modal */
+    _calcCellSize(gridSize) {
+        // Ancho del modal: min(94vw, 640px) menos padding (48px)
+        const modalWidth  = Math.min(window.innerWidth * 0.94, 640) - 48;
+        // La rejilla ocupa todo el ancho disponible del modal (con un pequeño margen)
+        const available   = Math.floor(modalWidth - 8);
+        // Cada celda: tamaño + gap (2px)
+        const cellWithGap = Math.floor(available / gridSize);
+        // Clamp: mínimo 24px, máximo 44px
+        return Math.max(24, Math.min(44, cellWithGap));
+    }
+
     start() {
         this.initP();
-        const lid   = document.getElementById('wl').value;
-        this.size   = parseInt(document.getElementById('wsize').value);
-        this.nWords = this.size===8?6:this.size===10?8:10;
-        // Map id_palabra → texto original para fichas educativas
+        const lid   = document.getElementById('ws-lang')?.value || 'any';
+        this.size   = parseInt(document.getElementById('ws-size')?.value || '10');
+        this.nWords = this.size===8 ? 6 : this.size===10 ? 8 : 10;
         this.wordMeta = {};
 
-        let pool=Core.processed.flatMap(i=>i.vars)
+        let pool = Core.processed.flatMap(i=>i.vars)
             .filter(v=>(lid==='any'||String(v.id_idioma)===String(lid)) && v.texto.length>=3 && v.texto.length<=this.size-2)
             .map(v=>{ const t=v.texto.toUpperCase().normalize('NFD').replace(/[^A-ZÑ]/g,''); return{ t, id:v.id_palabra, raw:v.texto }; })
             .filter(w=>w.t.length>=3)
-            .sort(()=>Math.random()-0.5).slice(0,this.nWords);
+            .sort(()=>Math.random()-0.5)
+            .slice(0, this.nWords);
 
         if(pool.length<4) return alert('Pocas palabras. Prueba otro idioma o tamaño.');
-        this.nWords=pool.length;
+        this.nWords = pool.length;
 
-        this.words=pool.map((w,idx)=>({ t:w.t, id:w.id, raw:w.raw, f:false, colorIdx:idx, foundBy:null }));
+        this.words = pool.map((w,idx)=>({ t:w.t, id:w.id, raw:w.raw, f:false, colorIdx:idx, foundBy:null }));
         this.words.forEach(w=>{ this.wordMeta[w.t]=w.id; });
 
-        this.grid=Array(this.size).fill(null).map(()=>Array(this.size).fill(''));
-        this.foundCells={}; // key "x,y" → colorIdx
+        // Construir la rejilla con validador estricto de colisiones
+        this.grid = Array(this.size).fill(null).map(()=>Array(this.size).fill(''));
+        this.foundCells = {};
 
-        // Direcciones: horizontal, vertical, diagonal
-        const dirs=[[1,0],[0,1],[1,1]];
-        this.words.forEach(w=>{
-            let placed=false;
-            for(let a=0;a<200&&!placed;a++){
-                const dir=dirs[Math.floor(Math.random()*dirs.length)];
-                const maxX=this.size-w.t.length*dir[0];
-                const maxY=this.size-w.t.length*dir[1];
-                if(maxX<0||maxY<0) continue;
-                const x=Math.floor(Math.random()*(maxX+1));
-                const y=Math.floor(Math.random()*(maxY+1));
-                let fit=true;
-                for(let k=0;k<w.t.length;k++){
-                    const cell=this.grid[y+k*dir[1]][x+k*dir[0]];
-                    if(cell&&cell!==w.t[k]){fit=false;break;}
+        // Direcciones: horizontal, vertical, diagonal ↘
+        const dirs = [[1,0],[0,1],[1,1]];
+
+        this.words.forEach(w => {
+            let placed = false;
+            for(let attempt = 0; attempt < 200 && !placed; attempt++){
+                const dir  = dirs[Math.floor(Math.random() * dirs.length)];
+                // Límites seguros: la palabra completa debe caber en la rejilla
+                const maxX = this.size - w.t.length * dir[0];
+                const maxY = this.size - w.t.length * dir[1];
+                if(maxX < 0 || maxY < 0) continue;
+
+                const startX = Math.floor(Math.random() * (maxX + 1));
+                const startY = Math.floor(Math.random() * (maxY + 1));
+
+                // Validador: celda vacía O misma letra (permite intersecciones válidas)
+                let canPlace = true;
+                for(let k = 0; k < w.t.length; k++){
+                    const cy   = startY + Math.round(k * dir[1]);
+                    const cx   = startX + Math.round(k * dir[0]);
+                    const cell = this.grid[cy][cx];
+                    if(cell !== '' && cell !== w.t[k]){ canPlace = false; break; }
                 }
-                if(fit){ for(let k=0;k<w.t.length;k++) this.grid[y+k*dir[1]][x+k*dir[0]]=w.t[k]; placed=true; }
-            }
-        });
-        const abc='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-        for(let y=0;y<this.size;y++) for(let x=0;x<this.size;x++) if(!this.grid[y][x]) this.grid[y][x]=abc[Math.floor(Math.random()*abc.length)];
 
-        this.sel=[]; this.drag=false;
+                if(canPlace){
+                    for(let k = 0; k < w.t.length; k++){
+                        const cy = startY + Math.round(k * dir[1]);
+                        const cx = startX + Math.round(k * dir[0]);
+                        this.grid[cy][cx] = w.t[k];
+                    }
+                    placed = true;
+                }
+            }
+            // No cupo después de 200 intentos → marcar para eliminar
+            if(!placed) w._skip = true;
+        });
+
+        // Eliminar palabras que no cupieron (rejilla siempre perfecta)
+        this.words  = this.words.filter(w => !w._skip);
+        this.nWords = this.words.length;
+
+        // Rellenar huecos
+        const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        for(let y=0; y<this.size; y++)
+            for(let x=0; x<this.size; x++)
+                if(!this.grid[y][x]) this.grid[y][x] = abc[Math.floor(Math.random()*abc.length)];
+
+        this.sel  = [];
+        this.drag = false;
         this.startTimer();
         this.render();
     }
 
     _cellClasses(x,y) {
-        const sel=this.sel.some(p=>p.x===x&&p.y===y);
-        const key=`${x},${y}`;
-        const foundIdx=this.foundCells[key];
-        const found=foundIdx!==undefined;
-        return `ws-cell ${sel?'selected':''} ${found?`found-${foundIdx%8}`:''}`;
+        const sel     = this.sel.some(p=>p.x===x && p.y===y);
+        const key     = `${x},${y}`;
+        const foundIdx = this.foundCells[key];
+        const found   = foundIdx !== undefined;
+        return `ws-cell${sel?' selected':''}${found?` found-${foundIdx%8}`:''}`;
     }
 
     render() {
-        const cellSize=Math.floor(Math.min(360,window.innerWidth*0.9)/this.size);
-        const cells=this.grid.map((r,y)=>r.map((c,x)=>`
-            <div class="${this._cellClasses(x,y)}" data-x="${x}" data-y="${y}">${c}</div>`
-        ).join('')).join('');
+        const cs = this._calcCellSize(this.size);           // tamaño de celda en px
+        const gap = 2;
+        const totalPx = this.size * cs + (this.size - 1) * gap;
 
-        const colors=['#2563eb','#e11d48','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#065f46'];
-        const chips=this.words.map((w,idx)=>{
-            const bg=w.f?colors[idx%8]:'transparent';
-            const txt=w.f?'#fff':'var(--primary)';
-            const border=w.f?'transparent':'var(--border)';
-            return `<span class="word-chip" style="background:${bg};color:${txt};border-color:${border};${w.f?'text-decoration:line-through':''}">
-                ${w.f?`✓ ${w.foundBy||''}  `:''} ${w.t}
+        // Construir celdas con tamaño explícito para evitar desfase
+        const cells = this.grid.map((r,y) =>
+            r.map((c,x) =>
+                `<div class="${this._cellClasses(x,y)}"
+                      data-x="${x}" data-y="${y}"
+                      style="width:${cs}px;height:${cs}px;font-size:${Math.max(10, cs-10)}px">${c}</div>`
+            ).join('')
+        ).join('');
+
+        const colors = ['#2563eb','#e11d48','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#065f46'];
+        const chips  = this.words.map((w,idx)=>{
+            const bg  = w.f ? colors[idx%8] : 'transparent';
+            const txt = w.f ? '#fff' : 'var(--primary)';
+            const brd = w.f ? 'transparent' : 'var(--border)';
+            return `<span class="word-chip" style="background:${bg};color:${txt};border-color:${brd};${w.f?'text-decoration:line-through':''}">
+                ${w.f ? `✓ ${w.foundBy||''}  ` : ''} ${w.t}
             </span>`;
         }).join('');
 
-        const found=this.words.filter(w=>w.f).length;
-        document.getElementById('modal-body').innerHTML=`
+        const found = this.words.filter(w=>w.f).length;
+        document.getElementById('modal-body').innerHTML = `
             ${this.renderHeader()}
             <div style="text-align:center;font-size:0.82em;color:var(--text-sub);margin-bottom:6px">
                 Palabras: <b style="color:var(--primary)">${found}/${this.nWords}</b>
             </div>
             <div class="ws-wrapper">
-                <div class="ws-grid" id="ws-grid" style="grid-template-columns:repeat(${this.size},${cellSize}px);width:${this.size*cellSize+this.size*3}px">${cells}</div>
+                <div id="ws-grid" class="ws-grid"
+                     style="grid-template-columns:repeat(${this.size},${cs}px);gap:${gap}px;width:${totalPx}px;touch-action:none">
+                    ${cells}
+                </div>
             </div>
             <div class="word-list">${chips}</div>`;
+
         this._bindEvents();
     }
 
     _bindEvents() {
-        const grid=document.getElementById('ws-grid');
+        const grid = document.getElementById('ws-grid');
         if(!grid) return;
-        const getCell=e=>{
-            const t=e.touches?e.touches[0]:e;
-            const el=document.elementFromPoint(t.clientX,t.clientY);
-            if(!el||el.dataset.x===undefined) return null;
-            return{x:parseInt(el.dataset.x),y:parseInt(el.dataset.y)};
+
+        const getCell = e => {
+            const t  = e.touches ? e.touches[0] : e;
+            const el = document.elementFromPoint(t.clientX, t.clientY);
+            if(!el || el.dataset.x===undefined) return null;
+            return { x: parseInt(el.dataset.x), y: parseInt(el.dataset.y) };
         };
-        grid.addEventListener('mousedown', e=>{const c=getCell(e);if(c)this.d(1,c.x,c.y);});
-        grid.addEventListener('mousemove', e=>{if(!this.drag)return;const c=getCell(e);if(c)this.d(0,c.x,c.y);});
-        grid.addEventListener('mouseup',   ()=>this.d(2));
-        grid.addEventListener('touchstart',e=>{e.preventDefault();const c=getCell(e);if(c)this.d(1,c.x,c.y);},{passive:false});
-        grid.addEventListener('touchmove', e=>{e.preventDefault();const c=getCell(e);if(c)this.d(0,c.x,c.y);},{passive:false});
-        grid.addEventListener('touchend',  e=>{e.preventDefault();this.d(2);},{passive:false});
+
+        grid.addEventListener('mousedown',  e=>{ const c=getCell(e); if(c) this.d(1,c.x,c.y); });
+        grid.addEventListener('mousemove',  e=>{ if(!this.drag) return; const c=getCell(e); if(c) this.d(0,c.x,c.y); });
+        grid.addEventListener('mouseup',    ()=>this.d(2));
+        grid.addEventListener('touchstart', e=>{ e.preventDefault(); const c=getCell(e); if(c) this.d(1,c.x,c.y); }, {passive:false});
+        grid.addEventListener('touchmove',  e=>{ e.preventDefault(); const c=getCell(e); if(c) this.d(0,c.x,c.y); }, {passive:false});
+        grid.addEventListener('touchend',   e=>{ e.preventDefault(); this.d(2); },          {passive:false});
     }
 
-    d(s,x,y){
-        if(s===1){this.drag=true;this.startPos={x,y};this.sel=[{x,y}];}
-        if(s===0&&this.drag){
-            this.sel=[{x:this.startPos.x,y:this.startPos.y}];
-            const dx=x-this.startPos.x,dy=y-this.startPos.y;
-            if(dx===0&&dy===0){this._updateSelUI();return;}
-            if(Math.abs(dx)!==Math.abs(dy)&&dx!==0&&dy!==0){this._updateSelUI();return;}
-            const steps=Math.max(Math.abs(dx),Math.abs(dy));
-            const sx=dx===0?0:dx/Math.abs(dx),sy=dy===0?0:dy/Math.abs(dy);
-            for(let i=1;i<=steps;i++) this.sel.push({x:this.startPos.x+i*sx,y:this.startPos.y+i*sy});
+    d(s,x,y) {
+        if(s===1){
+            this.drag     = true;
+            this.startPos = {x,y};
+            this.sel      = [{x,y}];
         }
-        if(s===2){this.drag=false;this.chk();return;}
+        if(s===0 && this.drag){
+            this.sel = [{x:this.startPos.x, y:this.startPos.y}];
+            const dx = x - this.startPos.x;
+            const dy = y - this.startPos.y;
+            if(dx===0 && dy===0){ this._updateSelUI(); return; }
+            // Solo líneas rectas: horizontal, vertical o diagonal perfecta (|dx|===|dy|)
+            if(Math.abs(dx) !== Math.abs(dy) && dx !== 0 && dy !== 0){ this._updateSelUI(); return; }
+            const steps = Math.max(Math.abs(dx), Math.abs(dy));
+            const sx    = dx === 0 ? 0 : dx / Math.abs(dx);
+            const sy    = dy === 0 ? 0 : dy / Math.abs(dy);
+            // Math.round garantiza que todas las celdas intermedias se iluminen
+            // incluso al arrastrar rápido en diagonal
+            for(let i = 1; i <= steps; i++){
+                this.sel.push({
+                    x: this.startPos.x + Math.round(i * sx),
+                    y: this.startPos.y + Math.round(i * sy)
+                });
+            }
+        }
+        if(s===2){ this.drag=false; this.chk(); return; }
         this._updateSelUI();
     }
 
-    _updateSelUI(){
-        document.querySelectorAll('.ws-cell').forEach(el=>{
-            const x=parseInt(el.dataset.x),y=parseInt(el.dataset.y);
-            el.className=this._cellClasses(x,y);
+    _updateSelUI() {
+        document.querySelectorAll('#ws-grid .ws-cell').forEach(el=>{
+            const x = parseInt(el.dataset.x);
+            const y = parseInt(el.dataset.y);
+            el.className = this._cellClasses(x,y);
         });
     }
 
-    chk(){
-        const str=this.sel.map(p=>this.grid[p.y][p.x]).join('');
-        const found=this.words.find(w=>w.t===str&&!w.f);
+    chk() {
+        const str = this.sel.map(p=>this.grid[p.y][p.x]).join('');
+        const found = this.words.find(w=>w.t===str && !w.f);
         if(found){
-            found.f=true;
-            found.foundBy=this.players[this.turn].name;
+            found.f       = true;
+            found.foundBy = this.players[this.turn].name;
             this.players[this.turn].score++;
-            this.sel.forEach(p=>{ this.foundCells[`${p.x},${p.y}`]=found.colorIdx; });
+            this.sel.forEach(p=>{ this.foundCells[`${p.x},${p.y}`] = found.colorIdx; });
             SoundFX.ok();
             this.logWord(found.raw, found.id, true);
-            // Mostrar mini-ficha de la palabra encontrada
             this._flashWord(found);
             if(this.words.every(w=>w.f)){
                 SoundFX.win();
-                setTimeout(()=>this.showFinalRanking('🧩 ¡Sopa Completada!'),600);
+                setTimeout(()=>this.showFinalRanking('🧩 ¡Sopa Completada!'), 600);
                 return;
             }
-            // Acierto: el jugador sigue
-        } else if(str.length>2){
+            // Acierto: el jugador sigue en turno
+        } else if(str.length > 2){
             SoundFX.error();
-            // Error: pasa turno
-            this.next();
+            this.next();  // Error: pasa turno
         }
-        this.sel=[];
+        this.sel = [];
         this._updateSelUI();
         this._refreshHeader();
     }
 
-    _flashWord(w){
-        // Breve toast con la ficha de la palabra encontrada
-        const obj=Core.getWord(w.id);
+    _flashWord(w) {
+        const obj = Core.getWord(w.id);
         if(!obj) return;
-        const toast=document.createElement('div');
-        toast.style.cssText='position:fixed;bottom:160px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:2px solid var(--success);border-radius:14px;padding:10px 16px;z-index:4000;box-shadow:var(--shadow);text-align:center;min-width:200px;max-width:90vw;animation:popUp 0.3s';
-        toast.innerHTML=`<div style="font-weight:900;color:var(--success);font-size:1.1em">✓ ${w.raw}</div>
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position:fixed;bottom:160px;left:50%;transform:translateX(-50%);background:var(--bg-card);border:2px solid var(--success);border-radius:14px;padding:10px 16px;z-index:4000;box-shadow:var(--shadow);text-align:center;min-width:200px;max-width:90vw;animation:popUp 0.3s';
+        toast.innerHTML = `<div style="font-weight:900;color:var(--success);font-size:1.1em">✓ ${w.raw}</div>
             <div style="font-size:0.78em;color:var(--text-sub);margin-top:2px">${obj.def||''}</div>`;
         document.body.appendChild(toast);
-        setTimeout(()=>toast.remove(),2200);
+        setTimeout(()=>toast.remove(), 2200);
     }
 
-    _refreshHeader(){
-        const sb=document.querySelector('.score-board');
-        if(sb) sb.outerHTML=this.renderHeader();
+    _refreshHeader() {
+        // Actualizar score-board sin re-renderizar toda la sopa
+        const sb = document.querySelector('.score-board');
+        if(sb){
+            const tmp = document.createElement('div');
+            tmp.innerHTML = this.renderHeader();
+            sb.replaceWith(tmp.firstElementChild);
+        }
         // Actualizar chips
-        const colors=['#2563eb','#e11d48','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#065f46'];
-        const chipEl=document.querySelector('.word-list');
-        if(chipEl) chipEl.innerHTML=this.words.map((w,idx)=>{
-            const bg=w.f?colors[idx%8]:'transparent';
-            const txt=w.f?'#fff':'var(--primary)';
-            const border=w.f?'transparent':'var(--border)';
-            return `<span class="word-chip" style="background:${bg};color:${txt};border-color:${border};${w.f?'text-decoration:line-through':''}">
-                ${w.f?`✓ `:''} ${w.t}
+        const colors = ['#2563eb','#e11d48','#16a34a','#d97706','#7c3aed','#0891b2','#be185d','#065f46'];
+        const chipEl = document.querySelector('.word-list');
+        if(chipEl) chipEl.innerHTML = this.words.map((w,idx)=>{
+            const bg  = w.f ? colors[idx%8] : 'transparent';
+            const txt = w.f ? '#fff' : 'var(--primary)';
+            const brd = w.f ? 'transparent' : 'var(--border)';
+            return `<span class="word-chip" style="background:${bg};color:${txt};border-color:${brd};${w.f?'text-decoration:line-through':''}">
+                ${w.f ? `✓ ` : ''} ${w.t}
             </span>`;
         }).join('');
     }
 
-    revealAll(){
-        // Marcar todas como no encontradas visualmente en el log
-        this.words.filter(w=>!w.f).forEach(w=>this.logWord(w.raw,w.id,false,true));
+    revealAll() {
+        this.words.filter(w=>!w.f).forEach(w=>this.logWord(w.raw, w.id, false, true));
         this.showFinalRanking('Sopa de Letras Terminada');
     }
 
-    afterSurrender(){
-        this.render();
-    }
+    afterSurrender() { this.render(); }
 
-    // Sobreescribir showFinalRanking para incluir fichas de palabras no encontradas
-    showFinalRanking(title='🏆 Resultados'){
+    showFinalRanking(title='🏆 Resultados') {
         this.stop();
         document.getElementById('surrender-fab').classList.remove('visible');
 
-        const sorted=[...this.players].sort((a,b)=>b.score!==a.score?b.score-a.score:a.time-b.time);
-        const medals=['🥇','🥈','🥉'];
-        const rows=sorted.map((p,i)=>`
+        const sorted = [...this.players].sort((a,b)=>b.score!==a.score?b.score-a.score:a.time-b.time);
+        const medals = ['🥇','🥈','🥉'];
+        const rows = sorted.map((p,i)=>`
             <div class="ranking-row" style="border-left:4px solid ${p.color}">
                 <span class="ranking-medal">${medals[i]||`${i+1}.`}</span>
                 <span class="ranking-name">${p.surrendered?'🏳️ ':''}${p.name}</span>
@@ -1331,23 +1417,21 @@ const WordSearch = new class extends GameEngine {
                 </div>
             </div>`).join('');
 
-        // Fichas de palabras NO encontradas (didáctico)
-        const notFound=this.words.filter(w=>!w.f);
-        const eduCards=notFound.slice(0,4).map(w=>{
+        const notFound = this.words.filter(w=>!w.f);
+        const eduCards = notFound.slice(0,4).map(w=>{
             const obj=Core.getWord(w.id); return obj?UI.buildEduCard(obj):'';
         }).join('');
 
-        // Log de lo encontrado
-        let foundLog='';
+        let foundLog = '';
         if(this.wordsLog.length>0){
-            const chips=this.wordsLog.map(w=>{
-                const cls=w.ok?'ok':w.skipped?'skip':'fail';
+            const chips = this.wordsLog.map(w=>{
+                const cls = w.ok?'ok':w.skipped?'skip':'fail';
                 return `<span class="word-result-chip ${cls}">${w.ok?'✓':'—'} ${w.word}</span>`;
             }).join('');
-            foundLog=`<div class="words-log"><h4>Palabras encontradas</h4>${chips}</div>`;
+            foundLog = `<div class="words-log"><h4>Palabras encontradas</h4>${chips}</div>`;
         }
 
-        document.getElementById('modal-body').innerHTML=`
+        document.getElementById('modal-body').innerHTML = `
             <h2 style="text-align:center;color:var(--primary);margin-top:0">${title}</h2>
             ${rows}
             ${foundLog?`<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">${foundLog}</div>`:''}
