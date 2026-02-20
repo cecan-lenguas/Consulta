@@ -1136,7 +1136,7 @@ const Hangman = new class extends GameEngine {
    SOPA DE LETRAS
    ============================================= */
 const WordSearch = new class extends GameEngine {
-    _rulesHint() { return 'Arrastra sobre las letras para encontrar palabras. Al encontrar sigues tú; al fallar pasa el turno.'; }
+    _rulesHint() { return 'Arrastra sobre las letras para encontrar palabras. El turno pasa siempre, pero el temporizador corre.'; }
 
     setup() {
         const opts=`<option value="any">Mezclado</option>`+Core.langs.map(l=>`<option value="${l.id_idioma}">${this.getLangName(l.id_idioma)}</option>`).join('');
@@ -1364,7 +1364,7 @@ const WordSearch = new class extends GameEngine {
                 setTimeout(()=>this.showFinalRanking('🧩 ¡Sopa Completada!'), 600);
                 return;
             }
-            // Acierto: el jugador sigue en turno
+            this.next();
         } else if(str.length > 2){
             SoundFX.error();
             this.next();  // Error: pasa turno
